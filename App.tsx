@@ -1,7 +1,7 @@
 
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameState, ShapeType, Controls, Vector2D, LeaderboardPlayer, TankClass, Shape, Stats, Projectile, GameMode, Drone, Mine, Turret, Structure, DelayedExplosion, AmmoType, Clone } from './types';
+import { GameState, ShapeType, Controls, Vector2D, LeaderboardPlayer, TankClass, Shape, Stats, Projectile, GameMode, Drone, Mine, Turret, Structure, DelayedExplosion, AmmoType, Clone, FloatingText } from './types';
 import { XP_PER_LEVEL, PLAYER_MAX_SPEED, PLAYER_RADIUS, PROJECTILE_BASE_SPEED, PROJECTILE_RADIUS, BARREL_LENGTH, BARREL_WIDTH, SHAPE_SIZES, SHAPE_HEALTH, SHAPE_XP, SHAPE_COLORS, MAX_SHAPES_BASE, WORLD_WIDTH, WORLD_HEIGHT, UPGRADE_LEVELS, FIRE_RATE, PROJECTILE_DAMAGE, PROJECTILE_SPEED_MOD, SHAPE_BODY_DAMAGE, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, EVOLUTION_TREE, SUPREME_EVOLUTIONS, RECOIL_FORCE, PROJECTILE_INACCURACY, EXPLOSION_RADIUS, MAX_BOUNCES, LVL100_CLASS_TO_PATH, SUPREMACY_PATHS, ASCENSION_MAP, APOTHEOSIS_MAP, TRANSCENDENCE_MAP, PASSIVE_XP_RATES, DRONE_CLASSES, MAX_DRONES, DRONE_SPAWN_RATE, DRONE_DAMAGE, DRONE_HEALTH, DRONE_SPEED, MINE_CLASSES, MINE_DAMAGE, MINE_RADIUS, MINE_TRIGGER_RADIUS, MINE_EXPLOSION_RADIUS, SEEKER_CLASSES, HOMING_STRENGTH, BOSS_SPAWN_TIME, BOSS_STATS, TURRET_CLASSES, MAX_TURRETS, TURRET_ORBIT_RADIUS, TURRET_FIRE_RATE, TURRET_PROJECTILE_DAMAGE, TURRET_PROJECTILE_SPEED, SMART_MINE_CLASSES, SMART_MINE_SPEED, LASER_CLASSES, WALL_CLASSES, CHANNELER_DAMAGE_TO_XP, SPIRIT_OF_PEACE_DAMAGE_REDUCTION, PACIFIST_CLASSES, MINIBOSS_SPAWN_CHANCE, SPAWNER_BOSS_STATS, ALPHA_PENTAGON_STATS, SPAWNER_MINION_STATS, ARCHITECT_CLASSES, MAX_STRUCTURES, STRUCTURE_STATS, CHAIN_REACTION_CLASSES, REFLECTOR_CLASSES, SLOWING_CLASSES, DRONE_SPLITTING_CLASSES, TETHER_MINE_CLASSES, MINE_TETHER_RANGE, MINE_TETHER_DAMAGE, MOBILE_TURRET_CLASSES, CLONE_CLASSES, GROWING_PROJECTILE_CLASSES, INVISIBLE_PROJECTILE_CLASSES, DAMAGE_REFLECTION_CLASSES, GRAVITY_AURA_CLASSES, WAVE_ATTACK_CLASSES, MULTI_AMMO_CLASSES, GROWING_PROJECTILE_RATE, DAMAGE_REFLECTION_SHARDS, DAMAGE_REFLECTION_DAMAGE_MOD, GRAVITY_AURA_RADIUS, GRAVITY_PULL_STRENGTH, WAVE_MAX_RADIUS, WAVE_EXPANSION_SPEED, AMMO_TYPE_PROPERTIES, CLONE_STATS, GUARDIAN_BOSS_STATS } from './constants';
 import Hud from './components/Hud';
 import GameOver from './components/GameOver';
@@ -29,6 +29,7 @@ let turretIdCounter = 0;
 let projectileIdCounter = 0;
 let structureIdCounter = 0;
 let cloneIdCounter = 0;
+let floatingTextIdCounter = 0;
 
 const soundManager = {
     sounds: {} as Record<string, HTMLAudioElement>,
@@ -77,6 +78,7 @@ const App: React.FC = () => {
         boss: null,
         bossSpawnTimer: BOSS_SPAWN_TIME,
         delayedExplosions: [],
+        floatingTexts: [],
     });
     const controls = useRef<Controls>({ w: false, a: false, s: false, d: false, mouse: { x: 0, y: 0, down: false, rightDown: false }, autofire: false, autofarm: false });
     const lastShotTime = useRef<number>(0);
@@ -196,6 +198,7 @@ const App: React.FC = () => {
             boss: null,
             bossSpawnTimer: BOSS_SPAWN_TIME,
             delayedExplosions: [],
+            floatingTexts: [],
         };
         controls.current = { w: false, a: false, s: false, d: false, mouse: { x: 0, y: 0, down: false, rightDown: false }, autofire: false, autofarm: false };
         setLevel(1);
@@ -312,6 +315,7 @@ const App: React.FC = () => {
         }
         if (type === ShapeType.SPAWNER_MINION) {
             newShape.velocity = { x: 0, y: 0 };
+             newShape.target = gameState.current.player; // Target the player on spawn
         }
 
 
@@ -433,7 +437,7 @@ const App: React.FC = () => {
                 return;
             }
 
-            const { player, projectiles, shapes, particles, drones, mines, turrets, boss, structures, delayedExplosions } = gameState.current;
+            const { player, projectiles, shapes, particles, drones, mines, turrets, boss, structures, delayedExplosions, floatingTexts } = gameState.current;
             const { stats } = player;
 
             // Handle Delayed Explosions
@@ -605,7 +609,7 @@ const App: React.FC = () => {
 
             if (player.passiveXpRate) {
                 const passiveXpBonus = 1 + player.stats.passiveXpBoost * 0.05; // 5% boost per point
-                player.xp += (player.passiveXpRate * passiveXpBonus) / 60;
+                player.xp += (player.passiveXpRate * passiveXpBonus) * (deltaTime / 1000);
             }
             if (player.recoilOffset > 0) player.recoilOffset *= 0.9;
 
@@ -890,54 +894,64 @@ const App: React.FC = () => {
                     shape.slowUntil = undefined;
                 }
 
-                if (shape.type === ShapeType.SPAWNER_MINION && shape.target) {
+                // AI for movement and actions
+                const isBossType = [ShapeType.BOSS, ShapeType.SPAWNER_BOSS, ShapeType.GUARDIAN_BOSS].includes(shape.type);
+                if (isBossType) {
+                    const dx = player.position.x - shape.position.x;
+                    const dy = player.position.y - shape.position.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    // Boss Movement
+                    const speed = (
+                        shape.type === ShapeType.BOSS ? BOSS_STATS.SPEED :
+                        shape.type === ShapeType.SPAWNER_BOSS ? SPAWNER_BOSS_STATS.SPEED :
+                        GUARDIAN_BOSS_STATS.SPEED
+                    );
+                    shape.position.x += (dx / dist) * speed;
+                    shape.position.y += (dy / dist) * speed;
+
+                    // Boss Abilities
+                    if (shape.type === ShapeType.BOSS) {
+                        if (timestamp - (shape.lastShotTime ?? 0) > BOSS_STATS.FIRE_RATE) {
+                            shape.lastShotTime = timestamp;
+                            const angleToPlayer = Math.atan2(dy, dx);
+                            projectiles.push({
+                                id: projectileIdCounter++, owner: 'enemy', position: { ...shape.position },
+                                velocity: { x: Math.cos(angleToPlayer) * BOSS_STATS.PROJECTILE_SPEED, y: Math.sin(angleToPlayer) * BOSS_STATS.PROJECTILE_SPEED },
+                                damage: BOSS_STATS.PROJECTILE_DAMAGE, radius: 15, creationTime: timestamp
+                            });
+                            soundManager.play('shoot', 0.8);
+                        }
+                    } else if (shape.type === ShapeType.SPAWNER_BOSS) {
+                        if (timestamp - (shape.lastShotTime ?? 0) > SPAWNER_BOSS_STATS.SPAWN_RATE) {
+                            shape.lastShotTime = timestamp;
+                            spawnShape(ShapeType.SPAWNER_MINION, { ...shape.position });
+                            soundManager.play('level_up', 0.4);
+                        }
+                    } else if (shape.type === ShapeType.GUARDIAN_BOSS) {
+                        shape.shieldCooldown = (shape.shieldCooldown ?? 0) - deltaTime;
+                        if (!shape.isShielded && shape.shieldCooldown <= 0) {
+                            shape.isShielded = true;
+                            shape.shieldCooldown = GUARDIAN_BOSS_STATS.SHIELD_DURATION;
+                        } else if (shape.isShielded && shape.shieldCooldown <= 0) {
+                            shape.isShielded = false;
+                            shape.shieldCooldown = GUARDIAN_BOSS_STATS.SHIELD_COOLDOWN;
+                        }
+                    }
+                } else if (shape.type === ShapeType.SPAWNER_MINION && shape.target) {
+                    // Minion AI
                     const targetPosition = 'position' in shape.target ? shape.target.position : shape.target;
                     const dx = targetPosition.x - shape.position.x;
                     const dy = targetPosition.y - shape.position.y;
                     const dist = Math.hypot(dx, dy);
                     if (dist > 1) {
-                         shape.velocity = { x: (dx/dist) * SPAWNER_MINION_STATS.SPEED, y: (dy/dist) * SPAWNER_MINION_STATS.SPEED };
+                        shape.velocity = { x: (dx / dist) * SPAWNER_MINION_STATS.SPEED, y: (dy / dist) * SPAWNER_MINION_STATS.SPEED };
                     }
                 }
-                 if(shape.velocity){
+
+                if (shape.velocity) {
                     shape.position.x += shape.velocity.x;
                     shape.position.y += shape.velocity.y;
-                 }
-
-                // Boss AI
-                const isBoss = [ShapeType.BOSS, ShapeType.SPAWNER_BOSS, ShapeType.GUARDIAN_BOSS].includes(shape.type);
-                if (isBoss) {
-                     if(shape.type === ShapeType.GUARDIAN_BOSS){
-                        if(shape.shieldCooldown) shape.shieldCooldown -= deltaTime;
-                        if(!shape.isShielded && (!shape.shieldCooldown || shape.shieldCooldown <= 0)){
-                            shape.isShielded = true;
-                            shape.shieldCooldown = GUARDIAN_BOSS_STATS.SHIELD_DURATION;
-                        } else if(shape.isShielded && shape.shieldCooldown <=0){
-                            shape.isShielded = false;
-                            shape.shieldCooldown = GUARDIAN_BOSS_STATS.SHIELD_COOLDOWN;
-                        }
-                    }
-
-                    const dx = player.position.x - shape.position.x;
-                    const dy = player.position.y - shape.position.y;
-                    const dist = Math.hypot(dx, dy);
-                    const speed = BOSS_STATS.SPEED;
-                    shape.position.x += (dx/dist) * speed;
-                    shape.position.y += (dy/dist) * speed;
-
-                    if(shape.type === ShapeType.BOSS && timestamp - (shape.lastShotTime ?? 0) > BOSS_STATS.FIRE_RATE){
-                        shape.lastShotTime = timestamp;
-                        const angleToPlayer = Math.atan2(dy, dx);
-                        projectiles.push({
-                            id: projectileIdCounter++, owner: 'enemy', position: {...shape.position},
-                            velocity: { x: Math.cos(angleToPlayer) * BOSS_STATS.PROJECTILE_SPEED, y: Math.sin(angleToPlayer) * BOSS_STATS.PROJECTILE_SPEED },
-                            damage: BOSS_STATS.PROJECTILE_DAMAGE, radius: 15, creationTime: timestamp
-                        });
-                    }
-                     if(shape.type === ShapeType.SPAWNER_BOSS && timestamp - (shape.lastShotTime ?? 0) > SPAWNER_BOSS_STATS.SPAWN_RATE){
-                        shape.lastShotTime = timestamp;
-                        spawnShape(ShapeType.SPAWNER_MINION, {...shape.position});
-                    }
                 }
             });
 
@@ -976,6 +990,11 @@ const App: React.FC = () => {
             
             gameState.current.particles = particles.filter(p => {
                 p.position.x += p.velocity.x; p.position.y += p.velocity.y; p.lifespan--; return p.lifespan > 0;
+            });
+            gameState.current.floatingTexts = floatingTexts.filter(ft => {
+                ft.position.y -= 0.5;
+                ft.opacity -= 0.01;
+                return ft.opacity > 0;
             });
 
             // Mine logic
@@ -1144,7 +1163,15 @@ const App: React.FC = () => {
                  if (shape.health <= 0) {
                     const xpGained = SHAPE_XP[shape.type] * xpMultiplier;
                     player.xp += xpGained; setScore(currentScore => currentScore + xpGained);
-                    createParticles(shape.position, SHAPE_COLORS[shape.type], 35);
+
+                    const isMajorKill = [ShapeType.BOSS, ShapeType.SPAWNER_BOSS, ShapeType.GUARDIAN_BOSS, ShapeType.ALPHA_PENTAGON].includes(shape.type);
+                    if (isMajorKill) {
+                         gameState.current.floatingTexts.push({
+                            id: floatingTextIdCounter++, text: `+${Math.round(xpGained)} XP`, position: {...shape.position}, opacity: 1, size: 30,
+                         });
+                    }
+
+                    createParticles(shape.position, SHAPE_COLORS[shape.type], isMajorKill ? 150 : 35, isMajorKill ? 15 : 5);
                     soundManager.play('destroy');
                     if (shape.type === ShapeType.BOSS || shape.type === ShapeType.SPAWNER_BOSS || shape.type === ShapeType.GUARDIAN_BOSS) gameState.current.boss = null;
                     shapes.splice(i, 1);
@@ -1179,6 +1206,13 @@ const App: React.FC = () => {
                     const angle = Math.atan2(player.position.y - shape.position.y, player.position.x - shape.position.x);
                     player.velocity.x += Math.cos(angle) * 2;
                     player.velocity.y += Math.sin(angle) * 2;
+                    
+                    // Gain XP on body collision kill
+                    shape.health -= 1000; // instant kill
+                     if (shape.health <= 0) {
+                        const xpGained = SHAPE_XP[shape.type] * xpMultiplier;
+                        player.xp += xpGained; setScore(currentScore => currentScore + xpGained);
+                     }
                     if ([ShapeType.BOSS, ShapeType.SPAWNER_BOSS, ShapeType.GUARDIAN_BOSS].includes(shape.type)) gameState.current.boss = null;
                     shapes.splice(i,1);
                 }
@@ -1189,7 +1223,7 @@ const App: React.FC = () => {
             }
 
             if (player.health < player.maxHealth && timestamp - player.lastDamageTime > HEALTH_REGEN_DELAY) {
-                const regenAmountPerFrame = (player.maxHealth * HEALTH_REGEN_RATE) / 60;
+                const regenAmountPerFrame = (player.maxHealth * HEALTH_REGEN_RATE) * (deltaTime / 1000);
                 player.health = Math.min(player.maxHealth, player.health + regenAmountPerFrame);
             }
 
@@ -1241,7 +1275,7 @@ const App: React.FC = () => {
             ctx.fillStyle = theme === 'dark' ? '#1a202c' : '#f0f0f0';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            const zoom = Math.max(0.1, 1 - (player.level - 1) * 0.002);
+            const zoom = Math.max(0.1, 1 - (player.level - 1) * 0.0025);
             
             setCameraView({
                 x: player.position.x - (canvas.width / 2 / zoom),
@@ -1279,6 +1313,7 @@ const App: React.FC = () => {
                 ? `rgba(0, 191, 255, ${0.3 + Math.sin(timestamp / 800) * 0.2})` 
                 : 'rgba(0, 191, 255, 0.2)';
             ctx.lineWidth = boundaryWidth / zoom;
+// FIX: Replace `HEIGHT` with `WORLD_HEIGHT` for correct world boundary rendering.
             ctx.strokeRect(boundaryWidth / 2, boundaryWidth / 2, WORLD_WIDTH - boundaryWidth, WORLD_HEIGHT - boundaryWidth);
 
 
@@ -1346,6 +1381,7 @@ const App: React.FC = () => {
                  if (p.isLaser) {
                     ctx.beginPath();
                     ctx.moveTo(p.position.x, p.position.y);
+// FIX: Replace `HEIGHT` with `WORLD_HEIGHT` for correct laser rendering length.
                     ctx.lineTo(p.position.x + p.velocity.x * WORLD_WIDTH * 2, p.position.y + p.velocity.y * WORLD_HEIGHT * 2);
                     ctx.strokeStyle = theme === 'dark' ? '#f6e05e' : '#4299e1';
                     ctx.lineWidth = p.radius;
@@ -1461,6 +1497,14 @@ const App: React.FC = () => {
                 ctx.stroke();
             }
             
+            // Floating Text
+            floatingTexts.forEach(ft => {
+                ctx.font = `bold ${ft.size}px mono`;
+                ctx.fillStyle = `rgba(255, 255, 0, ${ft.opacity})`;
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.position.x, ft.position.y);
+            });
+
             // Health bar
             const playerBarWidth = PLAYER_RADIUS * 2; const playerBarHeight = 8;
             ctx.fillStyle = theme === 'dark' ? '#4a5568' : '#cbd5e0'; 
