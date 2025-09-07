@@ -255,7 +255,6 @@ export interface DelayedExplosion {
     delay: number; // in ms
 }
 
-// FIX: Add and export the FloatingText interface to define the shape of floating text objects.
 export interface FloatingText {
     id: number;
     text: string;
@@ -277,7 +276,6 @@ export interface GameState {
     boss: Shape | null;
     bossSpawnTimer: number;
     delayedExplosions: DelayedExplosion[];
-    // FIX: Add the floatingTexts property to the GameState interface to hold floating text objects.
     floatingTexts: FloatingText[];
 }
 

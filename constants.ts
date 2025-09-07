@@ -1,6 +1,5 @@
 
 
-// FIX: Import the `Stats` type to resolve the 'Cannot find name 'Stats'' error.
 import { ShapeType, TankClass, Stats, AmmoType } from './types';
 
 export const WORLD_WIDTH = 6000;
@@ -143,7 +142,6 @@ export const SUPREME_EVOLUTIONS: TankClass[] = [
 const finalTier75Classes = Object.values(EVOLUTION_TREE).flat().filter(c => !EVOLUTION_TREE[c] && !Object.values(TankClass).includes(c + "_VIVA")); // Exclude pacifist path
 finalTier75Classes.forEach(c => { EVOLUTION_TREE[c] = SUPREME_EVOLUTIONS; });
 
-// FIX: Changed to Partial<Record> because not all TankClass values have a path.
 export const LVL100_CLASS_TO_PATH: Partial<Record<TankClass, 'offensive' | 'balanced' | 'defensive'>> = {
     [TankClass.OVERLORD_SUPREMO]: 'balanced', [TankClass.DEFENDER]: 'defensive', [TankClass.FORTRESS]: 'defensive', [TankClass.TITAN]: 'offensive', [TankClass.JUGGERNAUT]: 'offensive',
 };

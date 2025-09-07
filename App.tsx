@@ -1313,7 +1313,6 @@ const App: React.FC = () => {
                 ? `rgba(0, 191, 255, ${0.3 + Math.sin(timestamp / 800) * 0.2})` 
                 : 'rgba(0, 191, 255, 0.2)';
             ctx.lineWidth = boundaryWidth / zoom;
-// FIX: Replace `HEIGHT` with `WORLD_HEIGHT` for correct world boundary rendering.
             ctx.strokeRect(boundaryWidth / 2, boundaryWidth / 2, WORLD_WIDTH - boundaryWidth, WORLD_HEIGHT - boundaryWidth);
 
 
@@ -1381,7 +1380,6 @@ const App: React.FC = () => {
                  if (p.isLaser) {
                     ctx.beginPath();
                     ctx.moveTo(p.position.x, p.position.y);
-// FIX: Replace `HEIGHT` with `WORLD_HEIGHT` for correct laser rendering length.
                     ctx.lineTo(p.position.x + p.velocity.x * WORLD_WIDTH * 2, p.position.y + p.velocity.y * WORLD_HEIGHT * 2);
                     ctx.strokeStyle = theme === 'dark' ? '#f6e05e' : '#4299e1';
                     ctx.lineWidth = p.radius;
